@@ -22,8 +22,8 @@ def calc_2theta_scalar(d_value, wavelength, n=1):
 
 # --- UI設定 ---
 st.set_page_config(page_title="Bragg Calculator (Matplotlib)", page_icon="📉")
-st.title("🔬 ブブラッグの法則 Bragg's Law 変換")
-st.markdown("Matplotlibを使用したグラフ描画に対応版")
+st.title("🔬 Bragg's Law 変換")
+
 
 # --- サイドバー: 波長設定 ---
 st.sidebar.header("⚙️ 条件設定")
