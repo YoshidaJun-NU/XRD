@@ -365,23 +365,34 @@ if uploaded_file is not None:
                 st.write("### パラメータ調整")
                 st.info("角度γと格子定数を調整して、青い点を赤い円弧上に配置してください。")
                 
-                # デフォルト値の推定 (d1をa, d2をbとする仮置き)
+                # デフォルト値の推定
                 ds_sorted = sorted(selected_peaks["d-value"].tolist(), reverse=True)
                 d_max_val = ds_sorted[0]
                 d_sec_val = ds_sorted[1] if len(ds_sorted) > 1 else d_max_val * 0.5
                 
-                # パラメータ入力
-                # 角度 gamma (直交に近い90度付近からスタート)
-                gamma_deg = st.slider("角度 γ (deg)", min_value=60.0, max_value=150.0, value=90.0, step=0.5)
+                # --- パラメータ入力 ---
+                # 角度 gamma (実空間)
+                gamma_deg = st.slider("実空間 角度 γ (deg)", min_value=60.0, max_value=150.0, value=90.0, step=0.5)
                 
+                # 逆空間角度 gamma* の計算と表示
+                # 2次元 Oblique の関係: gamma* = 180 - gamma
+                gamma_star_deg = 180.0 - gamma_deg
+                st.metric(label="逆空間 角度 γ*", value=f"{gamma_star_deg:.1f}°")
+
                 # 格子定数 a, b
                 a_ob = st.number_input("a軸 (Å)", value=float(d_max_val), format="%.4f", step=0.1, key="ob_a")
                 b_ob = st.number_input("b軸 (Å)", value=float(d_sec_val), format="%.4f", step=0.1, key="ob_b")
 
                 st.markdown(r"""
-                **使用している数式:**
+                **幾何学的関係:**
                 $$
-                \frac{1}{d^2} = \frac{1}{\sin^2\gamma} \left( \frac{h^2}{a^2} + \frac{k^2}{b^2} - \frac{2hk \cos\gamma}{ab} \right)
+                \gamma^* = 180^\circ - \gamma
+                $$
+                $$
+                Q_x = h a^* + k b^* \cos(\gamma^*)
+                $$
+                $$
+                Q_y = k b^* \sin(\gamma^*)
                 $$
                 """)
 
@@ -390,10 +401,11 @@ if uploaded_file is not None:
                 
                 # --- 計算ロジック ---
                 gamma_rad = np.deg2rad(gamma_deg)
-                sin_g = np.sin(gamma_rad)
-                cos_g = np.cos(gamma_rad)
+                gamma_star_rad = np.deg2rad(gamma_star_deg) # プロットにはこちらを使う
                 
-                # 逆格子ベクトルの大きさ (提示された式に基づく)
+                sin_g = np.sin(gamma_rad)
+                
+                # 逆格子ベクトルの大きさ
                 # a* = 1 / (a * sin(gamma))
                 # b* = 1 / (b * sin(gamma))
                 if sin_g == 0 or a_ob == 0 or b_ob == 0:
@@ -403,12 +415,7 @@ if uploaded_file is not None:
                 a_star = 1.0 / (a_ob * sin_g)
                 b_star = 1.0 / (b_ob * sin_g)
                 
-                # プロット用の座標計算 (Cartesian coordinates for plotting)
-                # a* をX軸に合わせる設定で計算します
-                # b* は a* に対して (180 - gamma) の角度を持つ方向に伸びます
-                rec_angle = np.pi - gamma_rad # 180 - gamma
-                
-                # 1. 逆格子点 (Grid Points)
+                # --- 1. 逆格子点 (Grid Points) ---
                 # 実測範囲に合わせて表示数を調整
                 min_d_obs = selected_peaks["d-value"].min()
                 max_q_display = (1.0 / min_d_obs) * 1.2
@@ -416,7 +423,7 @@ if uploaded_file is not None:
                 # ループ範囲の決定
                 h_limit = int(max_q_display / a_star) + 2
                 k_limit = int(max_q_display / b_star) + 2
-                h_limit = min(h_limit, 15) # 負荷軽減のためキャップ
+                h_limit = min(h_limit, 15) 
                 k_limit = min(k_limit, 15)
 
                 qx_list = []
@@ -428,11 +435,10 @@ if uploaded_file is not None:
                         if h==0 and k==0: continue
                         
                         # ベクトル合成: Q = h*a* + k*b*
-                        # Qx = h*a* + k*b* * cos(rec_angle)
-                        # Qy =        k*b* * sin(rec_angle)
-                        
-                        qx = h * a_star + k * b_star * np.cos(rec_angle)
-                        qy = k * b_star * np.sin(rec_angle)
+                        # ここで gamma* を使って座標変換します
+                        # a* はX軸上に固定と仮定
+                        qx = h * a_star + k * b_star * np.cos(gamma_star_rad)
+                        qy = k * b_star * np.sin(gamma_star_rad)
                         
                         # 表示範囲内かチェック
                         if np.sqrt(qx**2 + qy**2) < max_q_display:
@@ -452,13 +458,13 @@ if uploaded_file is not None:
                     ),
                     text=txt_list,
                     textposition="top right",
-                    name='Oblique Grid'
+                    name=f'Grid (γ*={gamma_star_deg:.1f}°)'
                 ))
 
-                # 2. 実測データの円弧 (Iso-d curves)
-                # Obliqueでも「d値」は原点からの距離(1/d)として円で描かれます
+                # --- 2. 実測データの円弧 (Iso-d curves) ---
+                # 第一象限のみ描画
                 colors = px.colors.qualitative.Plotly
-                theta = np.linspace(0, np.pi/2, 100) # 第一象限のみ
+                theta = np.linspace(0, np.pi/2, 100)
                 
                 for i, row in selected_peaks.iterrows():
                     d_val = row['d-value']
@@ -478,7 +484,7 @@ if uploaded_file is not None:
 
                 # レイアウト
                 fig_ob.update_layout(
-                    title=f"Oblique Q-plot (γ={gamma_deg}°)",
+                    title=f"Oblique Q-plot (Real: γ={gamma_deg}°, Recip: γ*={gamma_star_deg:.1f}°)",
                     xaxis_title="Qx (1/Å)",
                     yaxis_title="Qy (1/Å)",
                     width=600, height=600,
