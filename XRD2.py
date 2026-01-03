@@ -350,6 +350,6 @@ if uploaded_file is not None:
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_rec)  
+                st.plotly_chart(fig_rec)
 else:
     st.info("👈 サイドバーからCSVまたはTXTファイルをアップロードしてください。")
