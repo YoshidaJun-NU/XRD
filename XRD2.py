@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 import plotly.graph_objects as go
+import plotly.express as px
 
 # ページ設定
 st.set_page_config(page_title="XRD Analysis Web App", layout="wide")
