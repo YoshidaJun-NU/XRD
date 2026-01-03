@@ -393,9 +393,9 @@ if uploaded_file is not None:
 
                 st.markdown(r"""
                 **表示の説明:**
-                - **薄い青線:** 逆格子のグリッド（a*軸・b*軸に平行な線）
-                - **青い点:** 逆格子点 $(h,k)$
-                - **赤い破線:** 実測値 $(d)$
+                - **薄い青網:** 逆格子グリッド（メッシュ）
+                - **青い点:** 逆格子点
+                - **赤い破線:** 実測データ
                 """)
 
             with col_ob2:
@@ -418,30 +418,30 @@ if uploaded_file is not None:
                 min_d_obs = selected_peaks["d-value"].min()
                 max_q_display = (1.0 / min_d_obs) * 1.2
                 
-                # グリッド生成範囲 (少し広めに計算してクリッピングは表示時に任せる)
+                # ループ範囲
                 h_limit = int(max_q_display / a_star_len) + 2
                 k_limit = int(max_q_display / b_star_len) + 2
                 h_limit = min(h_limit, 20) 
                 k_limit = min(k_limit, 20)
 
                 # --- 1. グリッド線 (Lattice Mesh Lines) ---
-                # 格子点同士を結ぶ線を描画します
+                # 背景の直交グリッドを消す代わりに、この斜交グリッドを描画します
                 mesh_x = []
                 mesh_y = []
                 
-                # a*方向に平行な線 (hを走査, k固定)
+                # a*方向に平行な線 (kを固定してhを走査)
                 for k in range(k_limit):
                     # Start point (h=0)
                     sx = k * b_star_len * np.cos(gamma_star_rad)
                     sy = k * b_star_len * np.sin(gamma_star_rad)
                     # End point (h=h_limit-1)
                     ex = (h_limit - 1) * a_star_len + sx
-                    ey = sy # a*はX軸上なのでY座標は変わらない
+                    ey = sy # a*はX軸上なのでY座標変化なし
                     
-                    mesh_x.extend([sx, ex, None])
+                    mesh_x.extend([sx, ex, None]) # Noneで線を切る
                     mesh_y.extend([sy, ey, None])
 
-                # b*方向に平行な線 (kを走査, h固定)
+                # b*方向に平行な線 (hを固定してkを走査)
                 for h in range(h_limit):
                     # Start point (k=0)
                     sx = h * a_star_len
@@ -456,7 +456,7 @@ if uploaded_file is not None:
                 fig_ob.add_trace(go.Scatter(
                     x=mesh_x, y=mesh_y,
                     mode='lines',
-                    line=dict(color='lightblue', width=1), # 薄い青色で細く
+                    line=dict(color='lightblue', width=1), # 薄い青色
                     hoverinfo='skip',
                     name='Lattice Grid'
                 ))
@@ -538,20 +538,18 @@ if uploaded_file is not None:
                     yaxis_title="Qy [1/Å]",
                     width=600, height=600,
                     showlegend=True,
-                    # 軸の設定（薄くする）
+                    # 軸の設定（背景グリッドをOFFにする）
                     xaxis=dict(
                         range=[-0.05 * max_q_display, max_q_display], 
-                        showgrid=True, 
-                        gridcolor='#F0F0F0', # 非常に薄いグレー
-                        zeroline=True, 
-                        zerolinecolor='#BBBBBB', # 薄めのグレー（真っ黒ではない）
+                        showgrid=False,  # <--- 直交グリッド線を消す
+                        zeroline=True,   # 軸(0ライン)は残す
+                        zerolinecolor='#BBBBBB', 
                         zerolinewidth=1
                     ),
                     yaxis=dict(
                         range=[-0.05 * max_q_display, max_q_display], 
                         scaleanchor="x", scaleratio=1,
-                        showgrid=True, 
-                        gridcolor='#F0F0F0', 
+                        showgrid=False,  # <--- 直交グリッド線を消す
                         zeroline=True, 
                         zerolinecolor='#BBBBBB',
                         zerolinewidth=1
