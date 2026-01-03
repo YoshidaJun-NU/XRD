@@ -187,7 +187,7 @@ if uploaded_file is not None:
         st.plotly_chart(fig2, use_container_width=True)
 
 
-   # --- 6. Rectangular 2D 逆格子表示 (h-k space) ---
+# --- 6. Rectangular 2D 逆格子表示 (h-k space) ---
     st.markdown("---")
     st.subheader("2D Lattice Analysis (h-k plot)")
     
@@ -210,21 +210,32 @@ if uploaded_file is not None:
                 st.markdown(f"- $d_2$ = {d2:.4f} Å")
 
                 # --- パターンの計算 ---
-                # パターン1: d1=(2,0), d2=(1,1)
-                # a = 2*d1
+                
+                # パターン1: d1 -> (2,0), d2 -> (1,1)
+                # a = 2 * d1
                 # 1/b^2 = 1/d2^2 - 1/(4*d1^2)
                 p1_a = 2 * d1
                 p1_b_term = (1/(d2**2)) - (1/(4 * d1**2))
-                p1_b = 1/np.sqrt(p1_b_term) if p1_b_term > 0 else 0
-                p1_valid = p1_b > 0
+                
+                if p1_b_term > 0:
+                    p1_b = 1 / np.sqrt(p1_b_term)
+                    p1_valid = True
+                else:
+                    p1_b = 0
+                    p1_valid = False
 
-                # パターン2: d2=(2,0), d1=(1,1)
-                # a = 2*d2
+                # パターン2: d2 -> (2,0), d1 -> (1,1)
+                # a = 2 * d2
                 # 1/b^2 = 1/d1^2 - 1/(4*d2^2)
                 p2_a = 2 * d2
                 p2_b_term = (1/(d1**2)) - (1/(4 * d2**2))
-                p2_b = 1/np.sqrt(p2_b_term) if p2_b_term > 0 else 0
-                p2_valid = p2_b > 0
+                
+                if p2_b_term > 0:
+                    p2_b = 1 / np.sqrt(p2_b_term)
+                    p2_valid = True
+                else:
+                    p2_b = 0
+                    p2_valid = False
 
                 # --- 選択肢の表示 ---
                 mode = st.radio(
@@ -240,7 +251,7 @@ if uploaded_file is not None:
                         current_b = p1_b
                     else:
                         st.error("Pattern 1 は数学的に成立しません (ルートの中が負)")
-                        current_a = d1 # fallback
+                        current_a = d1 
                         current_b = d1
                 
                 elif mode == "Pattern 2":
@@ -259,14 +270,13 @@ if uploaded_file is not None:
                     current_b = float(d1)
 
                 # 手動調整用 (選択したパターンの値をデフォルトに入れるが、微調整可能にする)
-                # keyを変えることで外部からの値更新を反映させるテクニック
                 a_est = st.number_input("a軸 (Å)", value=float(current_a), format="%.4f", key=f"a_{mode}")
                 b_est = st.number_input("b軸 (Å)", value=float(current_b), format="%.4f", key=f"b_{mode}")
                 
                 st.markdown("""
                 **帰属パターンの詳細:**
-                - **Pattern 1:** $d_1 \to (20)$, $d_2 \to (11)$
-                - **Pattern 2:** $d_2 \to (20)$, $d_1 \to (11)$
+                - **Pattern 1:** $d_1 \\to (2,0)$, $d_2 \\to (1,1)$
+                - **Pattern 2:** $d_2 \\to (2,0)$, $d_1 \\to (1,1)$
                 """)
 
             with col_rec2:
@@ -339,6 +349,6 @@ if uploaded_file is not None:
                 )
                 
                 st.plotly_chart(fig_hk)
-                st.caption("曲線が青い点（整数交点）を通るように調整してください。Patternを選択すると自動で合わせます。")
+                st.caption("曲線が青い点（整数交点）を通るように調整してください。Patternを選択すると自動で合わせます。")  
 else:
     st.info("👈 サイドバーからCSVまたはTXTファイルをアップロードしてください。")
