@@ -187,11 +187,11 @@ if uploaded_file is not None:
         st.plotly_chart(fig2, use_container_width=True)
 
 
-# --- 6. Rectangular 2D 逆格子表示 (h-k space) ---
+# --- 6. Rectangular 2D 逆格子表示 (Reciprocal Space Q-plot) ---
     st.markdown("---")
-    st.subheader("2D Lattice Analysis (h-k plot)")
+    st.subheader("2D Lattice Analysis (Reciprocal Space Q-plot)")
     
-    with st.expander("Rectangular解析 (h-k プロット) を開く", expanded=True):
+    with st.expander("Rectangular解析 (逆空間プロット) を開く", expanded=True):
         if len(selected_peaks) < 2:
             st.warning("パターン計算には少なくとも2つのピークが必要です（d1, d2を使用するため）。")
         else:
@@ -210,10 +210,8 @@ if uploaded_file is not None:
                 st.markdown(f"- $d_2$ = {d2:.4f} Å")
 
                 # --- パターンの計算 ---
-                
                 # パターン1: d1 -> (2,0), d2 -> (1,1)
                 # a = 2 * d1
-                # 1/b^2 = 1/d2^2 - 1/(4*d1^2)
                 p1_a = 2 * d1
                 p1_b_term = (1/(d2**2)) - (1/(4 * d1**2))
                 
@@ -226,7 +224,6 @@ if uploaded_file is not None:
 
                 # パターン2: d2 -> (2,0), d1 -> (1,1)
                 # a = 2 * d2
-                # 1/b^2 = 1/d1^2 - 1/(4*d2^2)
                 p2_a = 2 * d2
                 p2_b_term = (1/(d1**2)) - (1/(4 * d2**2))
                 
@@ -250,9 +247,8 @@ if uploaded_file is not None:
                         current_a = p1_a
                         current_b = p1_b
                     else:
-                        st.error("Pattern 1 は数学的に成立しません (ルートの中が負)")
-                        current_a = d1 
-                        current_b = d1
+                        st.error("Pattern 1 は数学的に成立しません")
+                        current_a, current_b = d1, d1
                 
                 elif mode == "Pattern 2":
                     if p2_valid:
@@ -260,95 +256,100 @@ if uploaded_file is not None:
                         current_a = p2_a
                         current_b = p2_b
                     else:
-                        st.error("Pattern 2 は数学的に成立しません (ルートの中が負)")
-                        current_a = d1
-                        current_b = d1
+                        st.error("Pattern 2 は数学的に成立しません")
+                        current_a, current_b = d1, d1
                 
                 else: # Manual
                     st.info("下の入力欄で自由に調整できます")
                     current_a = float(d1)
                     current_b = float(d1)
 
-                # 手動調整用 (選択したパターンの値をデフォルトに入れるが、微調整可能にする)
+                # 手動調整用
                 a_est = st.number_input("a軸 (Å)", value=float(current_a), format="%.4f", key=f"a_{mode}")
                 b_est = st.number_input("b軸 (Å)", value=float(current_b), format="%.4f", key=f"b_{mode}")
                 
                 st.markdown("""
-                **帰属パターンの詳細:**
-                - **Pattern 1:** $d_1 \\to (2,0)$, $d_2 \\to (1,1)$
-                - **Pattern 2:** $d_2 \\to (2,0)$, $d_1 \\to (1,1)$
+                **プロットの見方:**
+                - **青い点:** 計算された逆格子点（格子定数 $a, b$ に依存して動きます）
+                - **赤い線:** 実測データの $d$ 値（固定されています）
+                - **目標:** 青い点が赤い線の上に乗るように $a, b$ を調整します。
                 """)
 
             with col_rec2:
-                # h-k プロットの作成
-                fig_hk = go.Figure()
+                # Q-space プロットの作成
+                fig_rec = go.Figure()
                 
-                # 1. 整数の格子点 (Theoretical Grid)
-                max_index = 6
-                h_vals = []
-                k_vals = []
+                # 逆格子ベクトル (Rectangular)
+                # a* = 1/a, b* = 1/b
+                a_star = 1.0 / a_est if a_est > 0 else 0
+                b_star = 1.0 / b_est if b_est > 0 else 0
+
+                # 1. 逆格子点 (Model Grid) をプロット
+                # Qx = h * a*, Qy = k * b*
+                max_index = 5
+                qx_vals = []
+                qy_vals = []
                 text_vals = []
                 
                 for h in range(max_index + 1):
                     for k in range(max_index + 1):
                         if h==0 and k==0: continue
-                        h_vals.append(h)
-                        k_vals.append(k)
+                        qx = h * a_star
+                        qy = k * b_star
+                        qx_vals.append(qx)
+                        qy_vals.append(qy)
                         text_vals.append(f"({h},{k})")
                         
-                fig_hk.add_trace(go.Scatter(
-                    x=h_vals, y=k_vals,
-                    mode='markers',
-                    marker=dict(size=6, color='blue', opacity=0.3),
+                fig_rec.add_trace(go.Scatter(
+                    x=qx_vals, y=qy_vals,
+                    mode='markers+text',
+                    marker=dict(size=8, color='blue', symbol='circle'),
                     text=text_vals,
-                    hoverinfo='text',
-                    name='Grid (Integer)'
+                    textposition="top right",
+                    name='Reciprocal Lattice Points'
                 ))
                 
-                # 2. 実測ピーク曲線 (Iso-d curves)
-                # k = b * sqrt( 1/d^2 - (h/a)^2 )
+                # 2. 実測ピークの円弧 (Observed Iso-d curves)
+                # 半径 Q = 1/d の円
                 colors = px.colors.qualitative.Plotly
+                
+                # 表示範囲の決定（最大Q値）
+                max_q_display = max(qx_vals) * 1.1 if qx_vals else 1.0
                 
                 for i, row in selected_peaks.iterrows():
                     d_val = row['d-value']
-                    # Label
+                    q_val = 1.0 / d_val
+                    
                     label_txt = f"d={d_val:.2f}"
                     if np.isclose(d_val, d1, atol=0.01): label_txt += " (d1)"
                     if np.isclose(d_val, d2, atol=0.01): label_txt += " (d2)"
-
-                    # hの最大値 (k=0になる点)
-                    h_limit = a_est / d_val
-                    
-                    # プロット用のh配列
-                    h_plot = np.linspace(0, h_limit, 200)
-                    
-                    # 対応するkを計算
-                    inside_sqrt = (1.0 / d_val**2) - (h_plot / a_est)**2
-                    inside_sqrt = np.clip(inside_sqrt, 0, None)
-                    k_plot = b_est * np.sqrt(inside_sqrt)
                     
                     color = colors[i % len(colors)]
                     
-                    fig_hk.add_trace(go.Scatter(
-                        x=h_plot, y=k_plot,
+                    # 第一象限の円弧を描くためのデータ生成
+                    theta = np.linspace(0, np.pi/2, 100)
+                    arc_x = q_val * np.cos(theta)
+                    arc_y = q_val * np.sin(theta)
+                    
+                    fig_rec.add_trace(go.Scatter(
+                        x=arc_x, y=arc_y,
                         mode='lines',
-                        line=dict(width=2, color=color),
+                        line=dict(width=2, color=color, dash='dash'),
                         name=label_txt,
                         hoverinfo='name'
                     ))
 
                 # レイアウト調整
-                fig_hk.update_layout(
-                    title="h-k Plot (First Quadrant)",
-                    xaxis_title="Index h",
-                    yaxis_title="Index k",
-                    xaxis=dict(range=[0, max_index+0.5], dtick=1, showgrid=True),
-                    yaxis=dict(range=[0, max_index+0.5], dtick=1, scaleanchor="x", scaleratio=1, showgrid=True),
+                fig_rec.update_layout(
+                    title="Reciprocal Space Map (Q-plot)",
+                    xaxis_title="Qx (1/Å) [ ~ h · a* ]",
+                    yaxis_title="Qy (1/Å) [ ~ k · b* ]",
+                    xaxis=dict(range=[0, max_q_display], showgrid=True),
+                    yaxis=dict(range=[0, max_q_display], scaleanchor="x", scaleratio=1, showgrid=True),
                     width=600, height=600,
                     showlegend=True
                 )
                 
-                st.plotly_chart(fig_hk)
-                st.caption("曲線が青い点（整数交点）を通るように調整してください。Patternを選択すると自動で合わせます。")  
+                st.plotly_chart(fig_rec)  
 else:
     st.info("👈 サイドバーからCSVまたはTXTファイルをアップロードしてください。")
