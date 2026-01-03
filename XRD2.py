@@ -192,29 +192,88 @@ if uploaded_file is not None:
     st.subheader("2D Lattice Analysis (h-k plot)")
     
     with st.expander("Rectangular解析 (h-k プロット) を開く", expanded=True):
-        if len(selected_peaks) < 1:
-            st.warning("解析には少なくとも1つのピークを選択してください。")
+        if len(selected_peaks) < 2:
+            st.warning("パターン計算には少なくとも2つのピークが必要です（d1, d2を使用するため）。")
         else:
             col_rec1, col_rec2 = st.columns([1, 2])
             
             with col_rec1:
-                st.write("### 格子定数の調整")
-                st.info("スライダー等を動かして、曲線が「青い点（整数座標）」の上を通るようにa, bを調整してください。")
+                st.write("### 格子定数の設定")
                 
-                # デフォルト値の推定
+                # d値の取得 (大きい順)
                 sorted_ds = sorted(selected_peaks["d-value"].tolist(), reverse=True)
-                d_max = sorted_ds[0]
+                d1 = sorted_ds[0]
+                d2 = sorted_ds[1]
                 
-                # a, b の入力（少し刻みを細かくしています）
-                a_est = st.number_input("推定 a軸 (Å)", value=float(d_max), step=0.1, format="%.2f")
-                b_est = st.number_input("推定 b軸 (Å)", value=float(d_max), step=0.1, format="%.2f")
+                st.markdown(f"**使用するd値:**")
+                st.markdown(f"- $d_1$ = {d1:.4f} Å")
+                st.markdown(f"- $d_2$ = {d2:.4f} Å")
+
+                # --- パターンの計算 ---
+                # パターン1: d1=(2,0), d2=(1,1)
+                # a = 2*d1
+                # 1/b^2 = 1/d2^2 - 1/(4*d1^2)
+                p1_a = 2 * d1
+                p1_b_term = (1/(d2**2)) - (1/(4 * d1**2))
+                p1_b = np.sqrt(1/p1_b_term) if p1_b_term > 0 else 0
+                p1_valid = p1_b > 0
+
+                # パターン2: d2=(2,0), d1=(1,1)
+                # a = 2*d2
+                # 1/b^2 = 1/d1^2 - 1/(4*d2^2)
+                p2_a = 2 * d2
+                p2_b_term = (1/(d1**2)) - (1/(4 * d2**2))
+                p2_b = np.sqrt(1/p2_b_term) if p2_b_term > 0 else 0
+                p2_valid = p2_b > 0
+
+                # --- 選択肢の表示 ---
+                mode = st.radio(
+                    "適用するモードを選択:",
+                    ["Manual (手動)", "Pattern 1", "Pattern 2"]
+                )
+
+                # 計算結果の表示と値の決定
+                if mode == "Pattern 1":
+                    if p1_valid:
+                        st.success(f"Pattern 1 適用中:\n a={p1_a:.4f}, b={p1_b:.4f}")
+                        current_a = p1_a
+                        current_b = p1_b
+                    else:
+                        st.error("Pattern 1 は数学的に成立しません (ルートの中が負)")
+                        current_a = d1 # fallback
+                        current_b = d1
                 
+                elif mode == "Pattern 2":
+                    if p2_valid:
+                        st.success(f"Pattern 2 適用中:\n a={p2_a:.4f}, b={p2_b:.4f}")
+                        current_a = p2_a
+                        current_b = p2_b
+                    else:
+                        st.error("Pattern 2 は数学的に成立しません (ルートの中が負)")
+                        current_a = d1
+                        current_b = d1
+                
+                else: # Manual
+                    st.info("下の入力欄で自由に調整できます")
+                    current_a = float(d1)
+                    current_b = float(d1)
+
+                # 手動調整用 (選択したパターンの値をデフォルトに入れるが、微調整可能にする)
+                # keyを変えることで外部からの値更新を反映させるテクニック
+                a_est = st.number_input("a軸 (Å)", value=float(current_a), format="%.4f", key=f"a_{mode}")
+                b_est = st.number_input("b軸 (Å)", value=float(current_b), format="%.4f", key=f"b_{mode}")
+                
+                st.markdown("""
+                **帰属パターンの詳細:**
+                - **Pattern 1:** $d_1 \to (20)$, $d_2 \to (11)$
+                - **Pattern 2:** $d_2 \to (20)$, $d_1 \to (11)$
+                """)
+
             with col_rec2:
                 # h-k プロットの作成
                 fig_hk = go.Figure()
                 
-                # 1. 整数の格子点 (Theoretical Grid) をプロット
-                # 表示範囲 (h, k の最大値)
+                # 1. 整数の格子点 (Theoretical Grid)
                 max_index = 6
                 h_vals = []
                 k_vals = []
@@ -230,36 +289,33 @@ if uploaded_file is not None:
                 fig_hk.add_trace(go.Scatter(
                     x=h_vals, y=k_vals,
                     mode='markers',
-                    marker=dict(size=5, color='blue', opacity=0.5),
+                    marker=dict(size=6, color='blue', opacity=0.3),
                     text=text_vals,
                     hoverinfo='text',
-                    name='Integer Grid (h,k)'
+                    name='Grid (Integer)'
                 ))
                 
-                # 2. 実測ピークに対応する曲線をプロット (Iso-d curves)
-                # Rectangularの式: 1/d^2 = (h/a)^2 + (k/b)^2
-                # これを変形して k = b * sqrt( 1/d^2 - (h/a)^2 )
-                
-                # 色の準備（ピークごとに色を変える）
+                # 2. 実測ピーク曲線 (Iso-d curves)
+                # k = b * sqrt( 1/d^2 - (h/a)^2 )
                 colors = px.colors.qualitative.Plotly
                 
                 for i, row in selected_peaks.iterrows():
                     d_val = row['d-value']
-                    peak_id = f"d={d_val:.2f}Å"
-                    
-                    # hの最大値 (k=0のとき) -> h_max = a / d
+                    # Label
+                    label_txt = f"d={d_val:.2f}"
+                    if np.isclose(d_val, d1, atol=0.01): label_txt += " (d1)"
+                    if np.isclose(d_val, d2, atol=0.01): label_txt += " (d2)"
+
+                    # hの最大値 (k=0になる点)
                     h_limit = a_est / d_val
                     
-                    # プロット用のh配列を作成 (0からh_limitまで滑らかに)
-                    h_plot = np.linspace(0, h_limit, 100)
+                    # プロット用のh配列
+                    h_plot = np.linspace(0, h_limit, 200)
                     
                     # 対応するkを計算
-                    # 中身が負にならないようにclip
                     inside_sqrt = (1.0 / d_val**2) - (h_plot / a_est)**2
                     inside_sqrt = np.clip(inside_sqrt, 0, None)
                     k_plot = b_est * np.sqrt(inside_sqrt)
-                    
-                    # 表示範囲内のデータのみ残す (max_indexを超えたらカットしてもよいが、plotlyが自動調整するのでそのまま)
                     
                     color = colors[i % len(colors)]
                     
@@ -267,22 +323,22 @@ if uploaded_file is not None:
                         x=h_plot, y=k_plot,
                         mode='lines',
                         line=dict(width=2, color=color),
-                        name=peak_id,
+                        name=label_txt,
                         hoverinfo='name'
                     ))
 
                 # レイアウト調整
                 fig_hk.update_layout(
-                    title="h-k Index Map (Rectangular)",
+                    title="h-k Plot (First Quadrant)",
                     xaxis_title="Index h",
                     yaxis_title="Index k",
-                    xaxis=dict(range=[0, max_index+0.5], dtick=1),
-                    yaxis=dict(range=[0, max_index+0.5], dtick=1, scaleanchor="x", scaleratio=1),
+                    xaxis=dict(range=[0, max_index+0.5], dtick=1, showgrid=True),
+                    yaxis=dict(range=[0, max_index+0.5], dtick=1, scaleanchor="x", scaleratio=1, showgrid=True),
                     width=600, height=600,
                     showlegend=True
                 )
                 
                 st.plotly_chart(fig_hk)
-                st.write("各色の線は「そのd値においてあり得る(h,k)の組み合わせ」を表します。線が整数グリッド（青点）を通れば、その指数に帰属できます。")
+                st.caption("曲線が青い点（整数交点）を通るように調整してください。Patternを選択すると自動で合わせます。")
 else:
     st.info("👈 サイドバーからCSVまたはTXTファイルをアップロードしてください。")
