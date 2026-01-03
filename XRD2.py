@@ -215,7 +215,7 @@ if uploaded_file is not None:
                 # 1/b^2 = 1/d2^2 - 1/(4*d1^2)
                 p1_a = 2 * d1
                 p1_b_term = (1/(d2**2)) - (1/(4 * d1**2))
-                p1_b = np.sqrt(1/p1_b_term) if p1_b_term > 0 else 0
+                p1_b = 1/np.sqrt(p1_b_term) if p1_b_term > 0 else 0
                 p1_valid = p1_b > 0
 
                 # パターン2: d2=(2,0), d1=(1,1)
@@ -223,7 +223,7 @@ if uploaded_file is not None:
                 # 1/b^2 = 1/d1^2 - 1/(4*d2^2)
                 p2_a = 2 * d2
                 p2_b_term = (1/(d1**2)) - (1/(4 * d2**2))
-                p2_b = np.sqrt(1/p2_b_term) if p2_b_term > 0 else 0
+                p2_b = 1/np.sqrt(p2_b_term) if p2_b_term > 0 else 0
                 p2_valid = p2_b > 0
 
                 # --- 選択肢の表示 ---
