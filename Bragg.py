@@ -1,94 +1,128 @@
+import streamlit as st
 import math
 
-class BraggCalculator:
-    def __init__(self, wavelength=1.54184):
-        """
-        初期化
-        :param wavelength: X線の波長 (Angstrom)。
-                           デフォルトは Cu K-alpha (加重平均) = 1.54184 A
-                           Cu K-alpha1 = 1.54056 A などに変更可能。
-        """
-        self.wavelength = wavelength
+# --- 計算ロジック ---
+def calc_d_from_twotheta(two_theta, wavelength, n=1):
+    try:
+        theta_rad = math.radians(two_theta / 2.0)
+        sin_theta = math.sin(theta_rad)
+        if sin_theta == 0:
+            return float('inf')
+        d = (n * wavelength) / (2.0 * sin_theta)
+        return d
+    except Exception:
+        return None
 
-    def calc_d_value(self, two_theta_deg, n=1):
-        """
-        2theta (度) から d値 (Angstrom) を計算します。
-        式: d = n * lambda / (2 * sin(theta))
-        """
-        try:
-            # 2thetaをthetaに変換し、さらにラジアンに変換
-            theta_rad = math.radians(two_theta_deg / 2.0)
-            
-            sin_theta = math.sin(theta_rad)
-            
-            if sin_theta == 0:
-                return float('inf') # 0度は無限大扱い
-            
-            d = (n * self.wavelength) / (2.0 * sin_theta)
-            return d
-            
-        except ValueError as e:
-            print(f"計算エラー: {e}")
-            return None
+def calc_twotheta_from_d(d_value, wavelength, n=1):
+    try:
+        val = (n * wavelength) / (2.0 * d_value)
+        if val > 1.0:
+            return None # 物理的に回折不可能
+        theta_rad = math.asin(val)
+        two_theta = 2.0 * math.degrees(theta_rad)
+        return two_theta
+    except (ValueError, ZeroDivisionError):
+        return None
 
-    def calc_two_theta(self, d_value, n=1):
-        """
-        d値 (Angstrom) から 2theta (度) を計算します。
-        式: theta = arcsin( n * lambda / 2d )
-        """
-        try:
-            # sin(theta) の値を計算
-            val = (n * self.wavelength) / (2.0 * d_value)
-            
-            # 定義域チェック (-1 <= sin(theta) <= 1)
-            # 物理的には d < lambda/2 の場合、回折は起きない
-            if val > 1.0:
-                return None # 回折不可能
-            
-            theta_rad = math.asin(val)
-            
-            # 2theta (度) に戻す
-            two_theta_deg = 2.0 * math.degrees(theta_rad)
-            return two_theta_deg
+# --- UI設定 ---
+st.set_page_config(page_title="Bragg's Law Calculator", page_icon="🔬")
 
-        except ValueError as e:
-            print(f"計算エラー: {e}")
-            return None
-        except ZeroDivisionError:
-            print("エラー: d値に0を指定することはできません。")
-            return None
+st.title("🔬 ブラッグの法則 計算機")
+st.markdown("X線回折における **2θ (回折角)** と **d値 (格子面間隔)** を相互変換します。")
 
-# --- 実行例 ---
+# --- サイドバー: 波長設定 ---
+st.sidebar.header("⚙️ 設定")
+st.sidebar.markdown("X線の波長 (λ) を設定してください。")
 
-if __name__ == "__main__":
-    # 1. 計算機のインスタンスを作成 (デフォルトは Cu K-alpha: 1.54184 A)
-    # 必要なら wavelength=0.71073 (Mo) などを指定してください
-    bragg = BraggCalculator(wavelength=1.54184)
+wavelength_preset = st.sidebar.selectbox(
+    "線源プリセット",
+    ("Cu Kα (1.5418 Å)", "Mo Kα (0.7107 Å)", "Co Kα (1.7902 Å)", "Custom")
+)
 
-    print(f"使用波長: {bragg.wavelength} Å\n")
+# プリセットに応じた波長の値
+if "Cu" in wavelength_preset:
+    default_lambda = 1.54184
+elif "Mo" in wavelength_preset:
+    default_lambda = 0.71073
+elif "Co" in wavelength_preset:
+    default_lambda = 1.79026
+else:
+    default_lambda = 1.54184
 
-    # ケースA: 2theta -> d値
-    target_2theta = 20.0
-    d_result = bragg.calc_d_value(target_2theta)
-    print(f"[変換] 2θ = {target_2theta:.2f}°  ->  d = {d_result:.5f} Å")
+# 波長の数値入力 (Customを選んだ場合に変更可能)
+wavelength = st.sidebar.number_input(
+    "波長 λ (Å)",
+    value=default_lambda,
+    format="%.5f",
+    step=0.00001
+)
+
+st.sidebar.markdown("---")
+st.sidebar.write(f"現在の波長: **{wavelength} Å**")
+
+# --- 数式の表示 ---
+st.markdown("### ブラッグの式")
+st.latex(r"2d \sin\theta = n\lambda")
+
+# --- メインエリア: タブによる機能切り替え ---
+tab1, tab2 = st.tabs(["2θ → d値 変換", "d値 → 2θ 変換"])
+
+# === タブ1: 2theta -> d ===
+with tab1:
+    st.subheader("2θ から d値を計算")
     
-    target_2theta = 40.0
-    d_result = bragg.calc_d_value(target_2theta)
-    print(f"[変換] 2θ = {target_2theta:.2f}°  ->  d = {d_result:.5f} Å")
-
-    print("-" * 30)
-
-    # ケースB: d値 -> 2theta
-    target_d = 4.43
-    two_theta_result = bragg.calc_two_theta(target_d)
+    col1, col2 = st.columns(2)
+    with col1:
+        input_2theta = st.number_input(
+            "2θ (度) を入力", 
+            min_value=0.01, 
+            max_value=179.9, 
+            value=20.0, 
+            step=0.1,
+            format="%.2f"
+        )
     
-    if two_theta_result:
-        print(f"[変換] d = {target_d:.5f} Å  ->  2θ = {two_theta_result:.2f}°")
-    else:
-        print(f"[変換] d = {target_d:.5f} Å  ->  回折条件を満たしません (波長に対しdが小さすぎます)")
+    # 計算実行
+    result_d = calc_d_from_twotheta(input_2theta, wavelength)
+    
+    with col2:
+        st.write("結果 (d値):")
+        if result_d:
+            st.success(f"d = {result_d:.5f} Å")
+        else:
+            st.error("計算エラー")
 
-    # ケースC: 波長を変更する場合 (例: Mo線)
-    print("-" * 30)
-    mo_bragg = BraggCalculator(wavelength=0.71073)
-    d_mo = mo_bragg.calc_d_value(20.0)
-    print(f"Mo線 (0.71 Å) での 2θ=20° の d値: {d_mo:.5f} Å")
+    # 補足情報: q値の計算なども容易に追加可能
+    if result_d:
+        st.info(f"参考: 1/d = {1/result_d:.4f} Å⁻¹")
+
+# === タブ2: d -> 2theta ===
+with tab2:
+    st.subheader("d値 から 2θ を計算")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        input_d = st.number_input(
+            "d値 (Å) を入力", 
+            min_value=0.1, 
+            value=4.0, 
+            step=0.1,
+            format="%.4f"
+        )
+
+    # 計算実行
+    result_2theta = calc_twotheta_from_d(input_d, wavelength)
+
+    with col2:
+        st.write("結果 (2θ):")
+        if result_2theta:
+            st.success(f"2θ = {result_2theta:.2f}°")
+        else:
+            st.error(f"計算不可 (d < λ/2)。波長 {wavelength}Å に対してd値が小さすぎます。")
+
+    if result_2theta:
+        st.info(f"計算条件: λ = {wavelength} Å, n = 1")
+
+# --- フッター ---
+st.markdown("---")
+st.caption("Created with Python & Streamlit")
