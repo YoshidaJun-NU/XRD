@@ -351,5 +351,151 @@ if uploaded_file is not None:
                 )
                 
                 st.plotly_chart(fig_rec)
+# --- 7. Oblique 2D 逆格子表示 (Oblique Lattice Analysis) ---
+    st.markdown("---")
+    st.subheader("2D Lattice Analysis (Oblique / 斜交格子)")
+    
+    with st.expander("Oblique解析 (斜交格子プロット) を開く", expanded=False):
+        if len(selected_peaks) < 1:
+            st.warning("解析には実測ピークが必要です。")
+        else:
+            col_ob1, col_ob2 = st.columns([1, 2])
+            
+            with col_ob1:
+                st.write("### パラメータ調整")
+                st.info("角度γと格子定数を調整して、青い点を赤い円弧上に配置してください。")
+                
+                # デフォルト値の推定 (d1をa, d2をbとする仮置き)
+                ds_sorted = sorted(selected_peaks["d-value"].tolist(), reverse=True)
+                d_max_val = ds_sorted[0]
+                d_sec_val = ds_sorted[1] if len(ds_sorted) > 1 else d_max_val * 0.5
+                
+                # パラメータ入力
+                # 角度 gamma (直交に近い90度付近からスタート)
+                gamma_deg = st.slider("角度 γ (deg)", min_value=60.0, max_value=150.0, value=90.0, step=0.5)
+                
+                # 格子定数 a, b
+                a_ob = st.number_input("a軸 (Å)", value=float(d_max_val), format="%.4f", step=0.1, key="ob_a")
+                b_ob = st.number_input("b軸 (Å)", value=float(d_sec_val), format="%.4f", step=0.1, key="ob_b")
+
+                st.markdown(r"""
+                **使用している数式:**
+                $$
+                \frac{1}{d^2} = \frac{1}{\sin^2\gamma} \left( \frac{h^2}{a^2} + \frac{k^2}{b^2} - \frac{2hk \cos\gamma}{ab} \right)
+                $$
+                """)
+
+            with col_ob2:
+                fig_ob = go.Figure()
+                
+                # --- 計算ロジック ---
+                gamma_rad = np.deg2rad(gamma_deg)
+                sin_g = np.sin(gamma_rad)
+                cos_g = np.cos(gamma_rad)
+                
+                # 逆格子ベクトルの大きさ (提示された式に基づく)
+                # a* = 1 / (a * sin(gamma))
+                # b* = 1 / (b * sin(gamma))
+                if sin_g == 0 or a_ob == 0 or b_ob == 0:
+                    st.error("Invalid parameters (zero division)")
+                    st.stop()
+                    
+                a_star = 1.0 / (a_ob * sin_g)
+                b_star = 1.0 / (b_ob * sin_g)
+                
+                # プロット用の座標計算 (Cartesian coordinates for plotting)
+                # a* をX軸に合わせる設定で計算します
+                # b* は a* に対して (180 - gamma) の角度を持つ方向に伸びます
+                rec_angle = np.pi - gamma_rad # 180 - gamma
+                
+                # 1. 逆格子点 (Grid Points)
+                # 実測範囲に合わせて表示数を調整
+                min_d_obs = selected_peaks["d-value"].min()
+                max_q_display = (1.0 / min_d_obs) * 1.2
+                
+                # ループ範囲の決定
+                h_limit = int(max_q_display / a_star) + 2
+                k_limit = int(max_q_display / b_star) + 2
+                h_limit = min(h_limit, 15) # 負荷軽減のためキャップ
+                k_limit = min(k_limit, 15)
+
+                qx_list = []
+                qy_list = []
+                txt_list = []
+
+                for h in range(h_limit):
+                    for k in range(k_limit):
+                        if h==0 and k==0: continue
+                        
+                        # ベクトル合成: Q = h*a* + k*b*
+                        # Qx = h*a* + k*b* * cos(rec_angle)
+                        # Qy =        k*b* * sin(rec_angle)
+                        
+                        qx = h * a_star + k * b_star * np.cos(rec_angle)
+                        qy = k * b_star * np.sin(rec_angle)
+                        
+                        # 表示範囲内かチェック
+                        if np.sqrt(qx**2 + qy**2) < max_q_display:
+                            qx_list.append(qx)
+                            qy_list.append(qy)
+                            txt_list.append(f"({h},{k})")
+
+                # 格子点のプロット
+                fig_ob.add_trace(go.Scatter(
+                    x=qx_list, y=qy_list,
+                    mode='markers+text',
+                    marker=dict(
+                        size=10, 
+                        color='blue', 
+                        symbol='circle',
+                        line=dict(width=1, color='DarkBlue')
+                    ),
+                    text=txt_list,
+                    textposition="top right",
+                    name='Oblique Grid'
+                ))
+
+                # 2. 実測データの円弧 (Iso-d curves)
+                # Obliqueでも「d値」は原点からの距離(1/d)として円で描かれます
+                colors = px.colors.qualitative.Plotly
+                theta = np.linspace(0, np.pi/2, 100) # 第一象限のみ
+                
+                for i, row in selected_peaks.iterrows():
+                    d_val = row['d-value']
+                    q_val = 1.0 / d_val
+                    color = colors[i % len(colors)]
+                    
+                    arc_x = q_val * np.cos(theta)
+                    arc_y = q_val * np.sin(theta)
+                    
+                    fig_ob.add_trace(go.Scatter(
+                        x=arc_x, y=arc_y,
+                        mode='lines',
+                        line=dict(width=2, color=color, dash='dash'),
+                        name=f"d={d_val:.2f}",
+                        hoverinfo='name'
+                    ))
+
+                # レイアウト
+                fig_ob.update_layout(
+                    title=f"Oblique Q-plot (γ={gamma_deg}°)",
+                    xaxis_title="Qx (1/Å)",
+                    yaxis_title="Qy (1/Å)",
+                    width=600, height=600,
+                    showlegend=True,
+                    xaxis=dict(
+                        range=[0, max_q_display], 
+                        showgrid=True, gridcolor='#E0E0E0', gridwidth=0.5,
+                        zeroline=True, zerolinecolor='black'
+                    ),
+                    yaxis=dict(
+                        range=[0, max_q_display], 
+                        scaleanchor="x", scaleratio=1,
+                        showgrid=True, gridcolor='#E0E0E0', gridwidth=0.5,
+                        zeroline=True, zerolinecolor='black'
+                    )
+                )
+                
+                st.plotly_chart(fig_ob)
 else:
     st.info("👈 サイドバーからCSVまたはTXTファイルをアップロードしてください。")
