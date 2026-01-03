@@ -363,7 +363,7 @@ if uploaded_file is not None:
             
             with col_ob1:
                 st.write("### パラメータ調整")
-                st.info("角度γと格子定数を調整して、青い点を赤い円弧上に配置してください。")
+                st.info("実空間の角度 γ を調整して、青い点を赤い円弧上に配置してください。")
                 
                 # デフォルト値の推定
                 ds_sorted = sorted(selected_peaks["d-value"].tolist(), reverse=True)
@@ -371,29 +371,31 @@ if uploaded_file is not None:
                 d_sec_val = ds_sorted[1] if len(ds_sorted) > 1 else d_max_val * 0.5
                 
                 # --- パラメータ入力 ---
-                # 角度 gamma (実空間)
-                gamma_deg = st.slider("実空間 角度 γ (deg)", min_value=60.0, max_value=150.0, value=90.0, step=0.5)
                 
-                # 逆空間角度 gamma* の計算と表示
-                # 2次元 Oblique の関係: gamma* = 180 - gamma
-                gamma_star_deg = 180.0 - gamma_deg
-                st.metric(label="逆空間 角度 γ*", value=f"{gamma_star_deg:.1f}°")
+                # 1. 格子定数 a, b (実空間)
+                a_ob = st.number_input("実空間 a軸 (Å)", value=float(d_max_val), format="%.4f", step=0.1, key="ob_a")
+                b_ob = st.number_input("実空間 b軸 (Å)", value=float(d_sec_val), format="%.4f", step=0.1, key="ob_b")
 
-                # 格子定数 a, b
-                a_ob = st.number_input("a軸 (Å)", value=float(d_max_val), format="%.4f", step=0.1, key="ob_a")
-                b_ob = st.number_input("b軸 (Å)", value=float(d_sec_val), format="%.4f", step=0.1, key="ob_b")
+                st.markdown("---")
+                
+                # 2. 角度 gamma (実空間)
+                gamma_deg = st.slider("実空間 角度 γ (deg)", min_value=30.0, max_value=150.0, value=90.0, step=0.5)
+                
+                # 逆空間角度 gamma*
+                gamma_star_deg = 180.0 - gamma_deg
+                
+                st.metric(
+                    label="逆空間の角度 γ*", 
+                    value=f"{gamma_star_deg:.1f}°",
+                    delta=f"From real γ: {gamma_deg}°",
+                    delta_color="off"
+                )
 
                 st.markdown(r"""
-                **幾何学的関係:**
-                $$
-                \gamma^* = 180^\circ - \gamma
-                $$
-                $$
-                Q_x = h a^* + k b^* \cos(\gamma^*)
-                $$
-                $$
-                Q_y = k b^* \sin(\gamma^*)
-                $$
+                **表示の説明:**
+                - **薄い青線:** 逆格子のグリッド（a*軸・b*軸に平行な線）
+                - **青い点:** 逆格子点 $(h,k)$
+                - **赤い破線:** 実測値 $(d)$
                 """)
 
             with col_ob2:
@@ -401,31 +403,65 @@ if uploaded_file is not None:
                 
                 # --- 計算ロジック ---
                 gamma_rad = np.deg2rad(gamma_deg)
-                gamma_star_rad = np.deg2rad(gamma_star_deg) # プロットにはこちらを使う
-                
+                gamma_star_rad = np.deg2rad(gamma_star_deg)
                 sin_g = np.sin(gamma_rad)
                 
-                # 逆格子ベクトルの大きさ
-                # a* = 1 / (a * sin(gamma))
-                # b* = 1 / (b * sin(gamma))
                 if sin_g == 0 or a_ob == 0 or b_ob == 0:
-                    st.error("Invalid parameters (zero division)")
+                    st.error("Invalid parameters")
                     st.stop()
-                    
-                a_star = 1.0 / (a_ob * sin_g)
-                b_star = 1.0 / (b_ob * sin_g)
+
+                # 逆格子ベクトルの長さ
+                a_star_len = 1.0 / (a_ob * sin_g)
+                b_star_len = 1.0 / (b_ob * sin_g)
                 
-                # --- 1. 逆格子点 (Grid Points) ---
-                # 実測範囲に合わせて表示数を調整
+                # 表示範囲の設定
                 min_d_obs = selected_peaks["d-value"].min()
                 max_q_display = (1.0 / min_d_obs) * 1.2
                 
-                # ループ範囲の決定
-                h_limit = int(max_q_display / a_star) + 2
-                k_limit = int(max_q_display / b_star) + 2
-                h_limit = min(h_limit, 15) 
-                k_limit = min(k_limit, 15)
+                # グリッド生成範囲 (少し広めに計算してクリッピングは表示時に任せる)
+                h_limit = int(max_q_display / a_star_len) + 2
+                k_limit = int(max_q_display / b_star_len) + 2
+                h_limit = min(h_limit, 20) 
+                k_limit = min(k_limit, 20)
 
+                # --- 1. グリッド線 (Lattice Mesh Lines) ---
+                # 格子点同士を結ぶ線を描画します
+                mesh_x = []
+                mesh_y = []
+                
+                # a*方向に平行な線 (hを走査, k固定)
+                for k in range(k_limit):
+                    # Start point (h=0)
+                    sx = k * b_star_len * np.cos(gamma_star_rad)
+                    sy = k * b_star_len * np.sin(gamma_star_rad)
+                    # End point (h=h_limit-1)
+                    ex = (h_limit - 1) * a_star_len + sx
+                    ey = sy # a*はX軸上なのでY座標は変わらない
+                    
+                    mesh_x.extend([sx, ex, None])
+                    mesh_y.extend([sy, ey, None])
+
+                # b*方向に平行な線 (kを走査, h固定)
+                for h in range(h_limit):
+                    # Start point (k=0)
+                    sx = h * a_star_len
+                    sy = 0
+                    # End point (k=k_limit-1)
+                    ex = sx + (k_limit - 1) * b_star_len * np.cos(gamma_star_rad)
+                    ey = sy + (k_limit - 1) * b_star_len * np.sin(gamma_star_rad)
+                    
+                    mesh_x.extend([sx, ex, None])
+                    mesh_y.extend([sy, ey, None])
+
+                fig_ob.add_trace(go.Scatter(
+                    x=mesh_x, y=mesh_y,
+                    mode='lines',
+                    line=dict(color='lightblue', width=1), # 薄い青色で細く
+                    hoverinfo='skip',
+                    name='Lattice Grid'
+                ))
+
+                # --- 2. 逆格子点 (Grid Points) ---
                 qx_list = []
                 qy_list = []
                 txt_list = []
@@ -434,71 +470,91 @@ if uploaded_file is not None:
                     for k in range(k_limit):
                         if h==0 and k==0: continue
                         
-                        # ベクトル合成: Q = h*a* + k*b*
-                        # ここで gamma* を使って座標変換します
-                        # a* はX軸上に固定と仮定
-                        qx = h * a_star + k * b_star * np.cos(gamma_star_rad)
-                        qy = k * b_star * np.sin(gamma_star_rad)
+                        qx = h * a_star_len + k * b_star_len * np.cos(gamma_star_rad)
+                        qy = k * b_star_len * np.sin(gamma_star_rad)
                         
-                        # 表示範囲内かチェック
                         if np.sqrt(qx**2 + qy**2) < max_q_display:
                             qx_list.append(qx)
                             qy_list.append(qy)
                             txt_list.append(f"({h},{k})")
 
-                # 格子点のプロット
                 fig_ob.add_trace(go.Scatter(
                     x=qx_list, y=qy_list,
                     mode='markers+text',
                     marker=dict(
-                        size=10, 
+                        size=8, 
                         color='blue', 
                         symbol='circle',
                         line=dict(width=1, color='DarkBlue')
                     ),
                     text=txt_list,
                     textposition="top right",
-                    name=f'Grid (γ*={gamma_star_deg:.1f}°)'
+                    name='Points'
                 ))
 
-                # --- 2. 実測データの円弧 (Iso-d curves) ---
-                # 第一象限のみ描画
+                # --- 3. 逆空間の軸 (Axes Vectors) ---
+                axis_scale = max_q_display * 0.2
+                # a* vector
+                fig_ob.add_annotation(
+                    x=axis_scale, y=0, xref="x", yref="y",
+                    ax=0, ay=0, axref="x", ayref="y",
+                    showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="green"
+                )
+                fig_ob.add_annotation(x=axis_scale, y=0, text="a*", font=dict(color="green"))
+
+                # b* vector
+                b_vec_x = axis_scale * np.cos(gamma_star_rad)
+                b_vec_y = axis_scale * np.sin(gamma_star_rad)
+                fig_ob.add_annotation(
+                    x=b_vec_x, y=b_vec_y, xref="x", yref="y",
+                    ax=0, ay=0, axref="x", ayref="y",
+                    showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="green"
+                )
+                fig_ob.add_annotation(
+                    x=b_vec_x, y=b_vec_y, text="b*", 
+                    xanchor="right" if b_vec_x < 0 else "left", font=dict(color="green")
+                )
+
+                # --- 4. 実測データの円弧 ---
                 colors = px.colors.qualitative.Plotly
                 theta = np.linspace(0, np.pi/2, 100)
-                
                 for i, row in selected_peaks.iterrows():
                     d_val = row['d-value']
                     q_val = 1.0 / d_val
                     color = colors[i % len(colors)]
                     
-                    arc_x = q_val * np.cos(theta)
-                    arc_y = q_val * np.sin(theta)
-                    
                     fig_ob.add_trace(go.Scatter(
-                        x=arc_x, y=arc_y,
+                        x=q_val * np.cos(theta), 
+                        y=q_val * np.sin(theta),
                         mode='lines',
                         line=dict(width=2, color=color, dash='dash'),
-                        name=f"d={d_val:.2f}",
-                        hoverinfo='name'
+                        name=f"d={d_val:.2f}"
                     ))
 
-                # レイアウト
+                # レイアウト調整
                 fig_ob.update_layout(
-                    title=f"Oblique Q-plot (Real: γ={gamma_deg}°, Recip: γ*={gamma_star_deg:.1f}°)",
-                    xaxis_title="Qx (1/Å)",
-                    yaxis_title="Qy (1/Å)",
+                    title=f"Oblique Q-plot (γ*={gamma_star_deg:.1f}°)",
+                    xaxis_title="Qx (along a*) [1/Å]",
+                    yaxis_title="Qy [1/Å]",
                     width=600, height=600,
                     showlegend=True,
+                    # 軸の設定（薄くする）
                     xaxis=dict(
-                        range=[0, max_q_display], 
-                        showgrid=True, gridcolor='#E0E0E0', gridwidth=0.5,
-                        zeroline=True, zerolinecolor='black'
+                        range=[-0.05 * max_q_display, max_q_display], 
+                        showgrid=True, 
+                        gridcolor='#F0F0F0', # 非常に薄いグレー
+                        zeroline=True, 
+                        zerolinecolor='#BBBBBB', # 薄めのグレー（真っ黒ではない）
+                        zerolinewidth=1
                     ),
                     yaxis=dict(
-                        range=[0, max_q_display], 
+                        range=[-0.05 * max_q_display, max_q_display], 
                         scaleanchor="x", scaleratio=1,
-                        showgrid=True, gridcolor='#E0E0E0', gridwidth=0.5,
-                        zeroline=True, zerolinecolor='black'
+                        showgrid=True, 
+                        gridcolor='#F0F0F0', 
+                        zeroline=True, 
+                        zerolinecolor='#BBBBBB',
+                        zerolinewidth=1
                     )
                 )
                 
