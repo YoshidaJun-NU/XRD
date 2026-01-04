@@ -120,7 +120,7 @@ if df is not None:
         
 
     # --- 3. Peak Search Settings ---
-    st.subheader("Peak Search Settings")
+    st.subheader("2 Peak Search Settings")
     col_pset1, col_pset2 = st.columns(2)
     with col_pset1:
         max_int = float(np.max(intensity)) if len(intensity) > 0 else 1.0
@@ -141,7 +141,7 @@ if df is not None:
     peak_int = intensity[peaks]
 
     # --- 4. Peak Selection (Data Editor) ---
-    st.subheader("Peak Selection")
+    st.subheader("3 Peak Selection")
     
     peak_df = pd.DataFrame({
         "Select": [True] * len(peaks),
@@ -155,9 +155,9 @@ if df is not None:
     selected_peaks = edited_peak_df[edited_peak_df["Select"] == True]
     
     # --- 5. Plotting ---
-    st.subheader("Plots")
+    st.subheader("4 Plots")
     
-    tab1, tab2 = st.tabs(["2Theta vs Intensity", "d-value vs Intensity"])
+    tab1, tab2 = st.tabs(["2Theta vs Intensity", "d-value vs Intensity (予備的な相決定)"])
 
     # Common marker trace
     peak_trace = go.Scatter(
@@ -219,7 +219,7 @@ if df is not None:
 
     # --- 6. Rectangular 2D Reciprocal Space Q-plot ---
     st.markdown("---")
-    st.subheader("2D Lattice Analysis (Reciprocal Space Q-plot)")
+    st.subheader("52D Lattice Analysis (Reciprocal Space Q-plot)")
     
     with st.expander("Rectangular解析 (逆空間プロット) を開く", expanded=True):
         if len(selected_peaks) < 2:
@@ -342,7 +342,7 @@ if df is not None:
 
     # --- 7. Oblique 2D Lattice Analysis ---
     st.markdown("---")
-    st.subheader("2D Lattice Analysis (Oblique / 斜交格子)")
+    st.subheader("6 2D Lattice Analysis (Oblique / 斜交格子)")
     
     with st.expander("Oblique解析 (斜交格子プロット) を開く", expanded=False):
         if len(selected_peaks) < 1:
