@@ -254,4 +254,27 @@ set ytics format ""
         
         # 色指定
         lc_str = ""
-        if color_mode ==
+        if color_mode == "All Black":
+            lc_str = " lc rgb 'black'"
+        elif color_mode == "Custom":
+            hex_c = custom_colors_list[i]
+            lc_str = f" lc rgb '{hex_c}'"
+        
+        gnuplot_script += f"    ${block_name} using 1:($2 + {offset_math}) with lines lw {line_width}{lc_str} title '{item['name']}'"
+        
+        if i > 0:
+            gnuplot_script += ", \\\n"
+        else:
+            gnuplot_script += "\n"
+            
+        data_str = item['data'].to_csv(sep='\t', index=False, header=False)
+        data_blocks += f"${block_name} << EOD\n{data_str}EOD\n\n"
+
+    final_script = gnuplot_script + "\n" + data_blocks
+
+    st.download_button(
+        label="Download Gnuplot Script (.plt)",
+        data=final_script,
+        file_name="xrd_plot.plt",
+        mime="text/plain"
+    )
