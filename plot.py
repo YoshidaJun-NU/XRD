@@ -9,14 +9,15 @@ import io
 # ---------------------------------------------------------
 st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
 
-st.title("XRD Multi-Plotter (Range & Colors)")
+st.title("XRD Multi-Plotter (Supports .2ta)")
 st.markdown("""
 ### 使い方
 1. サイドバーでデータ形式や**線の色**を設定。
 2. データファイルをグレー部分にアップロード。
 　　分子研データは，xy形式のファイルが楽。
-　　分子研のCSV形式データは，29行までヘッダー，またファイルの最後に温度情報があるので，プロットでは削除の必要。
-            """)
+    分子研のCSV形式データは，29行までヘッダー，またファイルの最後に温度情報があるので，プロットでは削除の必要。
+3. プレビューを確認し、画像(PNG)やGnuplotスクリプトをダウンロード。
+""")
 
 # ---------------------------------------------------------
 # サイドバー: 設定項目
@@ -63,7 +64,7 @@ color_mode = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
-# --- 4. 軸設定 (New!) ---
+# --- 4. 軸設定 ---
 st.sidebar.header("4. Axis Settings")
 use_manual_range = st.sidebar.checkbox("Manual X-axis Range", value=False)
 x_min, x_max = 10.0, 90.0 # Default
@@ -82,6 +83,7 @@ if use_manual_range:
 def load_data(uploaded_file, has_header, header_idx, x_col, y_col, nrows=None):
     try:
         header_arg = header_idx if has_header else None
+        # sep=None, engine='python' で多様なテキスト形式に対応
         df = pd.read_csv(uploaded_file, header=header_arg, sep=None, engine='python', nrows=nrows)
         
         if not has_header:
@@ -118,9 +120,10 @@ def generate_dummy_data():
 # メイン処理: ファイルアップロード
 # ---------------------------------------------------------
 
+# ここに '2ta' を追加しました
 uploaded_files = st.file_uploader(
-    "Upload XRD Data files (txt, csv, xy, dat)", 
-    type=['txt', 'csv', 'xy', 'dat'], 
+    "Upload XRD Data files", 
+    type=['txt', 'csv', 'xy', 'dat', '2ta'], 
     accept_multiple_files=True
 )
 
@@ -135,7 +138,7 @@ if uploaded_files:
         if df is not None:
             plot_data.append({"name": file.name, "data": df})
 else:
-    st.info("ファイルをアップロードしてください。以下はデモ表示です。")
+    st.info("ファイルをアップロードしてください。")
     plot_data = generate_dummy_data()
 
 # ---------------------------------------------------------
@@ -180,7 +183,7 @@ if plot_data:
     ax.tick_params(labelsize=font_size-2)
     ax.set_yticks([]) 
     
-    # 軸範囲の設定 (New!)
+    # 軸範囲の設定
     if use_manual_range:
         ax.set_xlim(x_min, x_max)
     
@@ -230,7 +233,7 @@ set ylabel "Intensity (a.u.)"
 set ytics format ""
 
 """
-    # 範囲設定 (New!)
+    # 範囲設定
     if use_manual_range:
         gnuplot_script += f"set xrange [{x_min}:{x_max}]\n"
 
@@ -251,27 +254,4 @@ set ytics format ""
         
         # 色指定
         lc_str = ""
-        if color_mode == "All Black":
-            lc_str = " lc rgb 'black'"
-        elif color_mode == "Custom":
-            hex_c = custom_colors_list[i]
-            lc_str = f" lc rgb '{hex_c}'"
-        
-        gnuplot_script += f"    ${block_name} using 1:($2 + {offset_math}) with lines lw {line_width}{lc_str} title '{item['name']}'"
-        
-        if i > 0:
-            gnuplot_script += ", \\\n"
-        else:
-            gnuplot_script += "\n"
-            
-        data_str = item['data'].to_csv(sep='\t', index=False, header=False)
-        data_blocks += f"${block_name} << EOD\n{data_str}EOD\n\n"
-
-    final_script = gnuplot_script + "\n" + data_blocks
-
-    st.download_button(
-        label="Download Gnuplot Script (.plt)",
-        data=final_script,
-        file_name="xrd_plot.plt",
-        mime="text/plain"
-    )
+        if color_mode ==
