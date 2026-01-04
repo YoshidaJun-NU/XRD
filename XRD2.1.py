@@ -11,7 +11,7 @@ st.set_page_config(page_title="LCANA (AI ver.)", layout="wide")
 
 # --- Constants ---
 WAVELENGTH = 1.5418  # Cu K-alpha
-DEFAULT_FILE_NAME = "2_090degC_20mm_300mm_5min.txt"
+DEFAULT_FILE_NAME = "demo.txt"
 
 # --- Functions ---
 def theta_to_d(two_theta):
