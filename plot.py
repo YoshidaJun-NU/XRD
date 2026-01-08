@@ -12,7 +12,7 @@ st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
 st.title("XRD Multi-Plotter")
 
 # ---------------------------------------------------------
-# 関数：データ読み込み（全列保持）
+# 関数：データ読み込み（エラー耐性を強化）
 # ---------------------------------------------------------
 def load_xrd_data_full(uploaded_file):
     try:
@@ -31,7 +31,9 @@ def load_xrd_data_full(uploaded_file):
         lines = content.splitlines()
         data_start_idx = 0
         for i, line in enumerate(lines):
-            parts = line.replace('\t', ',').split(',')
+            # カンマ、タブ、スペースを正規化して分割
+            parts = line.replace('\t', ',').replace(' ', ',').split(',')
+            parts = [p for p in parts if p.strip()] # 空要素削除
             if len(parts) >= 2:
                 try:
                     float(parts[0].strip())
@@ -42,11 +44,15 @@ def load_xrd_data_full(uploaded_file):
                     continue
         
         uploaded_file.seek(0)
-        # 全ての列を読み込む
+        # 全ての列を読み込み
         df = pd.read_csv(uploaded_file, skiprows=data_start_idx, header=None, sep=None, engine='python')
         # 数値データのみを抽出
         df = df.apply(pd.to_numeric, errors='coerce').dropna(axis=0, how='any')
-        # 列名が数字だと分かりにくいので "Col 0", "Col 1"... とする
+        
+        if df.empty:
+            return None
+            
+        # 列名を "Column 0", "Column 1"... で統一
         df.columns = [f"Column {i}" for i in range(df.shape[1])]
         return df
     except Exception as e:
@@ -71,25 +77,31 @@ if uploaded_files:
             all_data.append({"name": f.name, "df": df})
 
 # ---------------------------------------------------------
-# サイドバー: 2. 列の選択（新規追加機能）
+# サイドバー: 2. 列の選択（エラー対策版）
 # ---------------------------------------------------------
 x_col_name = ""
 y_col_name = ""
 
 if all_data:
     st.sidebar.header("2. Column Selection")
-    # 最初のファイルの列構成を基準に選択肢を作成
-    sample_df = all_data[0]["df"]
-    col_options = sample_df.columns.tolist()
+    
+    # 全ファイルの中で「最大で何列あるか」を調べて選択肢を作る
+    max_cols = max([d["df"].shape[1] for d in all_data])
+    col_options = [f"Column {i}" for i in range(max_cols)]
     
     x_col_name = st.sidebar.selectbox("X軸に使用する列", col_options, index=0)
-    y_col_name = st.sidebar.selectbox("Y軸に使用する列", col_options, index=1 if len(col_options) > 1 else 0)
+    y_col_name = st.sidebar.selectbox("Y軸に使用する列", col_options, index=1 if max_cols > 1 else 0)
 
     st.sidebar.subheader("表示するファイル")
     selected_data = []
     for d in all_data:
+        # チェックボックス
         if st.sidebar.checkbox(d["name"], value=True, key=f"check_{d['name']}"):
-            selected_data.append(d)
+            # 選択された列がこのファイルに存在するかチェック
+            if x_col_name in d["df"].columns and y_col_name in d["df"].columns:
+                selected_data.append(d)
+            else:
+                st.sidebar.warning(f"⚠️ {d['name']} には選択された列がありません（スキップされます）")
 else:
     selected_data = []
 
@@ -141,7 +153,7 @@ if selected_data:
         
         for i, d in enumerate(selected_data):
             style = individual_styles[d['name']]
-            # 指定された列名を使用してプロット
+            # ここで安全にデータを取得
             ax.plot(
                 d["df"][x_col_name], 
                 d["df"][y_col_name] + (i * y_offset),
@@ -164,8 +176,10 @@ if selected_data:
         fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         st.download_button("画像を保存 (PNG)", buf.getvalue(), "plot.png", "image/png")
 
+elif uploaded_files:
+    st.warning("表示できるデータがありません。選択した列（Column）がファイル内に存在するか確認してください。")
 else:
-    st.info("サイドバーからXRDデータをアップロードしてください。")
+    st.info("サイドバーからデータをアップロードしてください。")
 
 # ---------------------------------------------------------
 # 画面下部: 使い方
@@ -173,8 +187,6 @@ else:
 st.divider()
 st.subheader("📖 使い方")
 st.markdown("""
-1. **データの選択**: サイドバーの「Column Selection」で、X軸とY軸に使う列を指定してください。
-   - 例えば、1列目に角度、2列目に強度がある場合は、X=Column 0, Y=Column 1 を選びます。
-2. **プレビュー**: 中央の画面（幅80%）にグラフが表示されます。
-3. **スタイル変更**: 個別設定で、各データの線の種類や色を調整できます。
+- **KeyErrorの対策**: アップロードされた全てのファイルの中で最も多い列数を基準に選択肢を表示します。
+- **自動スキップ**: 選択した列が存在しないファイルがある場合、エラーで止まらずにそのファイルだけをスキップし、サイドバーに警告を表示します。
 """)
