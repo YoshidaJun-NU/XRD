@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.colors as mcolors
 import numpy as np
 import io
 import os
@@ -89,7 +90,11 @@ if plot_data:
     st.sidebar.header("3. Individual Style")
     for i, item in enumerate(plot_data):
         with st.sidebar.expander(f"Style: {item['name']}"):
-            color = st.color_picker(f"Color", key=f"col_{i}", value=plt.cm.tab10(i % 10))
+            # plt.cm.tab10(i % 10) を mcolors.to_hex で変換する
+            
+            default_color = mcolors.to_hex(plt.cm.tab10(i % 10))
+            
+            color = st.color_picker(f"Color", key=f"col_{i}", value=default_color)
             lw = st.slider(f"Line Width", 0.5, 5.0, 1.5, key=f"lw_{i}")
             ls = st.selectbox(f"Line Style", ["- (実線)", "-- (破線)", ": (点線)", "-. (一点鎖線)"], key=f"ls_{i}")
             individual_styles[item['name']] = {
