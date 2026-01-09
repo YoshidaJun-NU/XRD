@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 # ---------------------------------------------------------
 # 1. ページ設定
 # ---------------------------------------------------------
-st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
-st.title("🔬 XRD Multi-Plotter Pro (Final Font Fix)")
+st.set_page_config(page_title="XRD Plotter", layout="wide")
+st.title("🔬 XRD Multi-Plotter")
 
 # ---------------------------------------------------------
 # 2. 関数：データ読み込み & エクスポート
