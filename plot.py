@@ -4,14 +4,14 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import io
-from scipy.signal import find_peaks  # ピーク検出用
-import plotly.graph_objects as go  # インタラクティブ表示用
+from scipy.signal import find_peaks
+import plotly.graph_objects as go
 
 # ---------------------------------------------------------
 # 1. ページ設定
 # ---------------------------------------------------------
 st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
-st.title("🔬 XRD Multi-Plotter with Peak Finder")
+st.title("🔬 XRD Multi-Plotter Pro")
 
 # ---------------------------------------------------------
 # 2. 関数：データ読み込み
@@ -68,50 +68,72 @@ if all_data:
     x_col = st.sidebar.selectbox("X軸 (2θ)", col_options, index=0)
     y_col = st.sidebar.selectbox("Y軸 (Intensity)", col_options, index=1 if max_cols > 1 else 0)
 
-    # --- 【新機能】ピーク検出設定 ---
+    # ピーク検出設定
     with st.sidebar.expander("📌 ピーク自動検出の設定"):
         use_peak_finder = st.checkbox("ピークを自動でマークする", value=False)
-        peak_prominence = st.number_input("感度 (Prominence)", value=50.0, step=10.0, help="この値が高いほど、小さなノイズを無視します")
-        peak_distance = st.number_input("最小間隔 (Distance)", value=10, step=1, help="ピーク同士の最小の点数間隔")
+        peak_prominence = st.number_input("感度 (Prominence)", value=50.0, step=10.0)
+        peak_distance = st.number_input("最小間隔 (Distance)", value=10, step=1)
 
+    # 表示するファイルの選択
     for d in all_data:
         if st.sidebar.checkbox(d["name"], value=True, key=f"check_{d['name']}"):
             if x_col in d["df"].columns and y_col in d["df"].columns:
                 selected_data.append(d)
 
 # ---------------------------------------------------------
-# 4. メイン表示エリア
+# 4. サイドバー: 表示範囲とスタイル
 # ---------------------------------------------------------
 if selected_data:
-    # 表示オプション
-    st.sidebar.header("3. Graph Style")
-    use_interactive = st.checkbox("インタラクティブモード（マウスで値を読む）", value=True)
-    y_offset = st.sidebar.number_input("積み上げオフセット", value=0.0, step=100.0)
+    st.sidebar.header("3. Graph Display Range")
     
+    # 【機能追加】横軸の表示範囲を設定するための計算
+    all_x_series = pd.concat([d["df"][x_col] for d in selected_data])
+    global_x_min = float(all_x_series.min())
+    global_x_max = float(all_x_series.max())
+
+    # 表示範囲指定スライダー
+    x_range = st.sidebar.slider(
+        "横軸表示範囲 (2θ)", 
+        min_value=global_x_min, 
+        max_value=global_x_max, 
+        value=(global_x_min, global_x_max),
+        step=0.01
+    )
+
+    st.sidebar.header("4. Other Settings")
+    use_interactive = st.sidebar.checkbox("インタラクティブモード", value=True)
+    y_offset = st.sidebar.number_input("積み上げオフセット", value=0.0, step=100.0)
+
+    # ---------------------------------------------------------
+    # 5. メイン表示エリア
+    # ---------------------------------------------------------
     peak_results = [] # ピーク情報を格納
 
     if use_interactive:
-        # --- Plotlyによるインタラクティブグラフ ---
+        # --- Plotly (インタラクティブ) ---
         fig = go.Figure()
         for i, d in enumerate(selected_data):
             x = d["df"][x_col]
             y = d["df"][y_col]
             y_disp = y + (i * y_offset)
             
-            # プロット追加
             fig.add_trace(go.Scatter(
                 x=x, y=y_disp, name=d["name"], mode='lines',
                 hovertemplate = '2θ: %{x:.3f}<br>Int: %{text:.1f}',
-                text = y # マウスホバー時にオフセット前の生値を表示
+                text = y 
             ))
 
-            # ピーク検出
             if use_peak_finder:
                 peaks, _ = find_peaks(y, prominence=peak_prominence, distance=peak_distance)
+                # 表示範囲内のピークのみ抽出
+                p_x = x.iloc[peaks]
+                p_y = y_disp.iloc[peaks]
+                mask = (p_x >= x_range[0]) & (p_x <= x_range[1])
+                
                 fig.add_trace(go.Scatter(
-                    x=x.iloc[peaks], y=y_disp.iloc[peaks],
+                    x=p_x[mask], y=p_y[mask],
                     mode='markers+text',
-                    text=[f"{val:.2f}" for val in x.iloc[peaks]],
+                    text=[f"{val:.2f}" for val in p_x[mask]],
                     textposition="top center",
                     marker=dict(symbol='triangle-up', size=10),
                     name=f"Peaks ({d['name']})",
@@ -121,13 +143,15 @@ if selected_data:
                     peak_results.append({"File": d["name"], "2θ (deg)": x.iloc[p], "Intensity": y.iloc[p]})
 
         fig.update_layout(
-            xaxis_title="2θ (deg.)", yaxis_title="Intensity (a.u.)",
+            xaxis_title="2θ (deg.)", 
+            yaxis_title="Intensity (a.u.)",
+            xaxis=dict(range=[x_range[0], x_range[1]]), # 横軸範囲の反映
             hovermode="x unified", height=600, template="plotly_white"
         )
         st.plotly_chart(fig, use_container_width=True)
 
     else:
-        # --- Matplotlibによる静的グラフ (保存用) ---
+        # --- Matplotlib (静的・保存用) ---
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, d in enumerate(selected_data):
             x, y = d["df"][x_col], d["df"][y_col]
@@ -136,26 +160,23 @@ if selected_data:
             
             if use_peak_finder:
                 peaks, _ = find_peaks(y, prominence=peak_prominence, distance=peak_distance)
-                ax.plot(x.iloc[peaks], y_disp.iloc[peaks], "x", color="red")
                 for p in peaks:
-                    ax.text(x.iloc[p], y_disp.iloc[p], f"{x.iloc[p]:.2f}", 
-                            fontsize=9, verticalalignment='bottom', horizontalalignment='center')
-                    peak_results.append({"File": d["name"], "2θ (deg)": x.iloc[p], "Intensity": y.iloc[p]})
+                    if x_range[0] <= x.iloc[p] <= x_range[1]: # 範囲内のみ表示
+                        ax.text(x.iloc[p], y_disp.iloc[p], f"{x.iloc[p]:.2f}", 
+                                fontsize=9, verticalalignment='bottom', horizontalalignment='center')
+                        peak_results.append({"File": d["name"], "2θ (deg)": x.iloc[p], "Intensity": y.iloc[p]})
         
+        ax.set_xlim(x_range) # 横軸範囲の反映
         ax.set_xlabel("2θ (deg.)")
         ax.set_ylabel("Intensity (a.u.)")
         ax.legend()
         st.pyplot(fig)
 
-    # --- ピーク値の一覧表示 ---
+    # ピークリストの表示
     if use_peak_finder and peak_results:
         st.subheader("📋 Detected Peaks List")
         res_df = pd.DataFrame(peak_results)
         st.dataframe(res_df.style.format({"2θ (deg)": "{:.3f}", "Intensity": "{:.1f}"}))
-        
-        # CSVダウンロード
-        csv = res_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📌 ピークリストをCSV保存", csv, "peaks.csv", "text/csv")
 
 elif uploaded_files:
     st.warning("表示データがありません。")
