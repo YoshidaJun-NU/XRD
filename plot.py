@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 # 1. ページ設定
 # ---------------------------------------------------------
 st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
-st.title("🔬 XRD Multi-Plotter Pro (Full Integrated)")
+st.title("🔬 XRD Multi-Plotter Pro (.2ta support)")
 
 # ---------------------------------------------------------
 # 2. 関数：データ読み込み & エクスポート用処理
@@ -19,6 +19,7 @@ st.title("🔬 XRD Multi-Plotter Pro (Full Integrated)")
 def load_xrd_data_full(uploaded_file):
     try:
         content = ""
+        # 複数のエンコーディングで読み込みを試行
         for enc in ['utf-8', 'cp932', 'shift_jis']:
             try:
                 uploaded_file.seek(0)
@@ -26,20 +27,27 @@ def load_xrd_data_full(uploaded_file):
                 break
             except: continue
         if not content: return None
+
         lines = content.splitlines()
         data_start_idx = 0
         for i, line in enumerate(lines):
+            # タブ、スペース、カンマを区切り文字として分割
             parts = line.replace('\t', ',').replace(' ', ',').split(',')
             parts = [p for p in parts if p.strip()]
             if len(parts) >= 2:
                 try:
+                    # 最初の2つの要素が数値に変換可能なら、そこからデータ開始と判断
                     float(parts[0].strip()); float(parts[1].strip())
                     data_start_idx = i
                     break
                 except ValueError: continue
+        
         uploaded_file.seek(0)
+        # 2taファイルはスペースやタブ区切りが多いため sep=None (自動判別) を使用
         df = pd.read_csv(uploaded_file, skiprows=data_start_idx, header=None, sep=None, engine='python')
+        # 数値以外のゴミデータを削除
         df = df.apply(pd.to_numeric, errors='coerce').dropna(axis=0, how='any')
+        
         if df.empty: return None
         df.columns = [f"Column {i}" for i in range(df.shape[1])]
         return df
@@ -68,7 +76,12 @@ set key linestyle -1
 # 3. サイドバー: データ・スタイル設定
 # ---------------------------------------------------------
 st.sidebar.header("1. Data Import")
-uploaded_files = st.sidebar.file_uploader("ファイルを読み込む", type=['csv', 'txt', 'dat', 'xy'], accept_multiple_files=True)
+# typeに '2ta' を追加しました
+uploaded_files = st.sidebar.file_uploader(
+    "ファイルを読み込む", 
+    type=['csv', 'txt', 'dat', 'xy', '2ta'], 
+    accept_multiple_files=True
+)
 
 all_data = []
 if uploaded_files:
@@ -88,9 +101,9 @@ if all_data:
 
     for i, d in enumerate(all_data):
         if st.sidebar.checkbox(d["name"], value=True, key=f"cb_{i}"):
-            with st.sidebar.expander(f"🎨 {d['name']}"):
-                sc = st.number_input("強度倍率", value=1.0, step=0.1, key=f"sc_{i}")
-                cp = st.color_picker("色", mcolors.to_hex(plt.cm.tab10(i % 10)), key=f"cp_{i}")
+            with st.sidebar.expander(f"🎨 設定: {d['name']}"):
+                sc = st.number_input("強度倍率 (Scale X)", value=1.0, step=0.1, key=f"sc_{i}")
+                cp = st.color_picker("プロット色", mcolors.to_hex(plt.cm.tab10(i % 10)), key=f"cp_{i}")
                 lw = st.slider("線の太さ", 0.5, 5.0, 1.5, key=f"lw_{i}")
                 individual_styles[d['name']] = {"scale": sc, "color": cp, "lw": lw}
                 selected_data.append(d)
@@ -99,17 +112,15 @@ if all_data:
 # 4. メイン表示 (Plotlyによるインタラクティブ解析)
 # ---------------------------------------------------------
 if selected_data:
-    # 共通設定
-    st.sidebar.header("3. Global Settings")
+    st.sidebar.header("3. Global View Settings")
     all_x = pd.concat([d["df"][x_col] for d in selected_data])
-    x_range = st.sidebar.slider("表示範囲 (2θ)", float(all_x.min()), float(all_x.max()), (float(all_x.min()), float(all_x.max())))
-    y_offset = st.sidebar.number_input("積み上げオフセット", value=0.0, step=100.0)
+    x_range = st.sidebar.slider("表示範囲 (2θ)", float(all_x.min()), float(all_x.max()), (float(all_x.min()), float(all_x.max())), step=0.01)
+    y_offset = st.sidebar.number_input("積み上げオフセット (Y-offset)", value=0.0, step=100.0)
     
     use_peak_finder = st.sidebar.checkbox("ピーク検出を表示", value=False)
-    peak_prom = st.sidebar.number_input("ピーク感度", value=50.0, step=10.0) if use_peak_finder else 0
+    peak_prom = st.sidebar.number_input("ピーク検出感度", value=50.0, step=10.0) if use_peak_finder else 0
 
-    # --- インタラクティブグラフ (Plotly) ---
-    st.subheader("🔍 Interactive Analysis (Hover to read values)")
+    st.subheader("🔍 Interactive View")
     fig_plotly = go.Figure()
     peak_results = []
     export_df = pd.DataFrame()
@@ -120,18 +131,18 @@ if selected_data:
         y_scaled = d["df"][y_col] * style["scale"]
         y_disp = y_scaled + (i * y_offset)
         
-        # Plotlyプロット
+        # Plotly表示用
         fig_plotly.add_trace(go.Scatter(
             x=x, y=y_disp, name=d["name"], mode='lines',
             line=dict(color=style["color"], width=style["lw"]),
-            hovertemplate = f'2θ: %{{x:.3f}}<br>Int(Scaled): %{{y:.1f}}<br>File: {d["name"]}'
+            hovertemplate = f'2θ: %{{x:.3f}}<br>Scaled Int: %{{y:.1f}}<br>File: {d["name"]}'
         ))
 
-        # データ出力用
+        # 出力CSV用データの準備
         if i == 0: export_df['2theta'] = x
         export_df[d['name']] = d["df"][y_col]
 
-        # ピーク検出
+        # ピーク検出ロジック
         if use_peak_finder:
             peaks, _ = find_peaks(y_scaled, prominence=peak_prom)
             mask = (x.iloc[peaks] >= x_range[0]) & (x.iloc[peaks] <= x_range[1])
@@ -144,45 +155,47 @@ if selected_data:
                 peak_results.append({"File": d["name"], "2θ": x.iloc[p], "Intensity(Scaled)": y_scaled.iloc[p]})
 
     fig_plotly.update_layout(
-        xaxis=dict(title="2-theta (deg.)", range=x_range),
-        yaxis=dict(title="Intensity (a.u.)"),
-        height=600, template="plotly_white", hovermode="x unified"
+        xaxis=dict(title="2-theta (deg.)", range=x_range, gridcolor='#eee'),
+        yaxis=dict(title="Intensity (a.u.)", gridcolor='#eee'),
+        height=650, template="plotly_white", hovermode="x unified"
     )
     st.plotly_chart(fig_plotly, use_container_width=True)
 
     # ---------------------------------------------------------
-    # 5. エクスポート機能
+    # 5. エクスポート機能 (Matplotlib画像 / gnuplot / CSV)
     # ---------------------------------------------------------
     st.divider()
-    st.subheader("💾 Export & Save")
+    st.subheader("💾 Export & Download")
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        # 画像保存用にMatplotlibで描画
+        # 画像保存 (Matplotlibで高品質描画)
         fig_mpl, ax = plt.subplots(figsize=(10, 6))
         for i, d in enumerate(selected_data):
             style = individual_styles[d['name']]
             ax.plot(d["df"][x_col], (d["df"][y_col] * style["scale"]) + (i * y_offset),
                     color=style["color"], linewidth=style["lw"], label=d["name"])
         ax.set_xlim(x_range); ax.set_xlabel("2-theta (deg.)"); ax.set_ylabel("Intensity (a.u.)")
-        ax.legend(prop={'size': 8})
+        ax.legend(prop={'size': 8}, frameon=False)
         
-        dpi_val = st.select_slider("保存DPI", [72, 150, 300, 600], value=300)
+        dpi_val = st.select_slider("保存解像度 (DPI)", [72, 150, 300, 600], value=300)
         buf = io.BytesIO()
         fig_mpl.savefig(buf, format="png", dpi=dpi_val, bbox_inches='tight')
-        st.download_button("🖼 画像を保存 (PNG)", buf.getvalue(), "xrd_plot.png", "image/png")
+        st.download_button("🖼 画像を保存 (PNG)", buf.getvalue(), "xrd_plot_highres.png", "image/png")
 
     with c2:
+        # gnuplot用
         gp_script = generate_gnuplot_script(selected_data, individual_styles, x_range, y_offset)
-        st.download_button("📜 gnuplotスクリプト保存", gp_script, "plot_script.gp", "text/plain")
+        st.download_button("📜 gnuplotスクリプト保存", gp_script, "xrd_analysis.gp", "text/plain")
 
     with c3:
+        # データCSV用
         csv_data = export_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📊 データ(CSV)保存", csv_data, "processed_data.csv", "text/csv")
+        st.download_button("📊 生データ(CSV)保存", csv_data, "xrd_raw_combined.csv", "text/csv")
 
     if use_peak_finder and peak_results:
-        with st.expander("📋 ピークリストを表示"):
+        with st.expander("📋 検出ピーク一覧を確認"):
             st.table(pd.DataFrame(peak_results))
 
 else:
-    st.info("サイドバーからデータをアップロードし、ファイルを選択してください。")
+    st.info("サイドバーからXRDデータ (.csv, .txt, .2ta など) をアップロードしてください。")
