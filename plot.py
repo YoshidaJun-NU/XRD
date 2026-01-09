@@ -11,10 +11,10 @@ import plotly.graph_objects as go
 # 1. ページ設定
 # ---------------------------------------------------------
 st.set_page_config(page_title="XRD Plotter Pro", layout="wide")
-st.title("🔬 XRD Multi-Plotter Pro (Advanced Styling)")
+st.title("🔬 XRD Multi-Plotter Pro (Fixed & Full Featured)")
 
 # ---------------------------------------------------------
-# 2. 関数：データ読み込み & エクスポート用処理
+# 2. 関数：データ読み込み & エクスポート
 # ---------------------------------------------------------
 def load_xrd_data_full(uploaded_file):
     try:
@@ -98,16 +98,13 @@ if all_data:
                 individual_styles[d['name']] = {"scale": sc, "color": cp, "lw": lw}
                 selected_data.append(d)
 
-    # ---------------------------------------------------------
-    # 【新機能】グラフの全体スタイル設定
-    # ---------------------------------------------------------
     st.sidebar.header("3. Global Style Settings")
     with st.sidebar.expander("🛠 フォント・目盛り線の設定", expanded=False):
-        font_family = st.selectbox("フォント種類", ["sans-serif", "serif", "monospace", "Arial", "Times New Roman"])
+        font_family = st.selectbox("フォント種類", ["Arial", "sans-serif", "serif", "monospace", "Times New Roman"])
         base_font_size = st.slider("基本文字サイズ (軸ラベル等)", 8, 30, 18)
         tick_font_size = st.slider("目盛り数字サイズ", 8, 25, 14)
         show_grid = st.checkbox("目盛り線 (Grid) を表示", value=True)
-        grid_alpha = st.slider("目盛り線の透明度", 0.1, 1.0, 0.3) if show_grid else 0.3
+        grid_alpha = st.slider("目盛り線の透明度", 0.1, 1.0, 0.3)
 
     st.sidebar.header("4. View & Peak Settings")
     all_x = pd.concat([d["df"][x_col] for d in selected_data])
@@ -118,7 +115,7 @@ if all_data:
     peak_prom = st.sidebar.number_input("ピーク検出感度", value=50.0, step=10.0) if use_peak_finder else 0
 
 # ---------------------------------------------------------
-# 4. メイン表示 (Plotlyによるインタラクティブ解析)
+# 4. メイン表示 (Plotly)
 # ---------------------------------------------------------
 if selected_data:
     st.subheader("🔍 Interactive Analysis")
@@ -135,7 +132,7 @@ if selected_data:
         fig_plotly.add_trace(go.Scatter(
             x=x, y=y_disp, name=d["name"], mode='lines',
             line=dict(color=style["color"], width=style["lw"]),
-            hovertemplate = f'2θ: %{{x:.3f}}<br>Int: %{{y:.1f}}'
+            hovertemplate = '2θ: %{x:.3f}<br>Int: %{y:.1f}'
         ))
 
         if i == 0: export_df['2theta'] = x
@@ -154,21 +151,31 @@ if selected_data:
             for p in peaks:
                 peak_results.append({"File": d["name"], "2θ": x.iloc[p], "Intensity": y_scaled.iloc[p]})
 
+    # --- エラー回避のための修正箇所 ---
     fig_plotly.update_layout(
         xaxis=dict(
-            title="2-theta (deg.)", range=x_range, 
-            showgrid=show_grid, gridcolor='rgba(0,0,0,0.1)',
-            tickfont=dict(size=tick_font_size, family=font_family),
-            titlefont=dict(size=base_font_size, family=font_family)
+            title=dict(
+                text="2-theta (deg.)",
+                font=dict(size=base_font_size, family=font_family)
+            ),
+            range=x_range,
+            showgrid=show_grid,
+            gridcolor='rgba(0,0,0,0.1)',
+            tickfont=dict(size=tick_font_size, family=font_family)
         ),
         yaxis=dict(
-            title="Intensity (a.u.)", 
-            showgrid=show_grid, gridcolor='rgba(0,0,0,0.1)',
-            tickfont=dict(size=tick_font_size, family=font_family),
-            titlefont=dict(size=base_font_size, family=font_family)
+            title=dict(
+                text="Intensity (a.u.)",
+                font=dict(size=base_font_size, family=font_family)
+            ),
+            showgrid=show_grid,
+            gridcolor='rgba(0,0,0,0.1)',
+            tickfont=dict(size=tick_font_size, family=font_family)
         ),
         font=dict(family=font_family),
-        height=650, template="plotly_white", hovermode="x unified"
+        height=650,
+        template="plotly_white",
+        hovermode="x unified"
     )
     st.plotly_chart(fig_plotly, use_container_width=True)
 
@@ -180,7 +187,7 @@ if selected_data:
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        # 画像保存 (Matplotlib) にスタイル設定を反映
+        # Matplotlibによる画像保存
         plt.rcParams['font.family'] = font_family
         fig_mpl, ax = plt.subplots(figsize=(10, 6))
         for i, d in enumerate(selected_data):
@@ -213,4 +220,4 @@ if selected_data:
         with st.expander("📋 ピーク一覧"):
             st.table(pd.DataFrame(peak_results))
 else:
-    st.info("サイドバーからXRDデータをアップロードしてください。")
+    st.info("サイドバーからXRDデータ (.csv, .txt, .2ta など) をアップロードしてください。")
