@@ -46,7 +46,7 @@ uploaded_file = st.sidebar.file_uploader("XRDデータをアップロード", ty
 # 3. Header Skip Setting
 header_rows = st.sidebar.number_input("スキップする行数 (ヘッダー除去)", value=0, min_value=0)
 
-# --- Main Application ---
+# --- Main Application ---b
 st.title("LCANA (AI ver.)")
 st.markdown(f"""
 ### 使い方
